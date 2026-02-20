@@ -1,5 +1,73 @@
 # Optimisation du modèle : de v5 (RMSE 52.51) à v6 (RMSE 28.13)
 
+---
+
+## Résumé complet de toutes les versions (v0 → v6)
+
+| Version              | RMSE Kaggle   | R²        | Changement principal                      | Problème résolu                       |
+| -------------------- | ------------- | --------- | ----------------------------------------- | ------------------------------------- |
+| **v0** (initiale)    | ~94 kWh       | -0.77     | Baseline naïve                            | —                                     |
+| **v1** (clean)       | ~94 kWh       | -0.77     | Suppression des energy lags               | Fuite de données (data leakage)       |
+| **v2** (+ poste)     | ~75.5 kWh     | -0.14     | One-hot encoding du poste + merge corrigé | Poste ignoré, cross-join cassé        |
+| **v3** (per-poste)   | 66.39 kWh     | +0.12     | Un modèle Ridge par poste                 | Intercept global inadapté             |
+| **v4** (reg. forcée) | 63.51 kWh     | +0.19     | Alpha grid per-poste (C: min=1000)        | Overfitting coefficients Poste C      |
+| **v5** (Ridge+KNN)   | 50.38 kWh     | +0.49     | KNN k=200 pour Poste C                    | Extrapolation linéaire de C           |
+| **v6a** (features)   | 47.42 kWh     | —         | Sélection features par poste              | Extrapolation infrastructure →clients |
+| **v6b** (récence)    | 36.03 kWh     | —         | Fenêtre 9 mois pour Poste C               | Dérive temporelle de C                |
+| **v6 final**         | **28.13 kWh** | **0.842** | Correction biais A(-14) B(-20)            | Biais systématique train→test         |
+
+### Ce qui change à chaque version
+
+**v0 → v1 : Supprimer la fuite de données**
+
+- Problème : les energy lags (`energie_lag1`, `energie_lag24`) utilisaient la cible comme feature → triche au train, absents au test.
+- Fix : remplacer tous les lags d'énergie par des lags météo (température, humidité).
+- Impact : RMSE local empire (plus de triche) mais RMSE Kaggle devient réaliste.
+
+**v1 → v2 : Faire exister le poste dans le modèle**
+
+- Problème : `poste` (A/B/C) était une colonne texte ignorée → même prédiction pour les 3 postes.
+- Fix : one-hot encoding (`poste_A`, `poste_B`, `poste_C`) + correction du merge (ajouter `poste` comme clé de jointure).
+- Impact : -18.5 kWh RMSE. Mais un seul modèle ne peut pas capturer 3 intercepts différents (50/72/269 kWh).
+
+**v2 → v3 : Un modèle par poste**
+
+- Problème : intercept global ~216 kWh (dominé par C, 74% des données) → surestimation massive de A, sous-estimation de B.
+- Fix : entraîner un Ridge séparé pour chaque poste, sur ses propres données.
+- Impact : -9.1 kWh. R² enfin positif (+0.12). Lags météo maintenant corrects (pas de mélange inter-postes).
+
+**v3 → v4 : Forcer plus de régularisation pour C**
+
+- Problème : RidgeCV choisissait alpha=10 pour C (trop faible) car le CV ne voyait que des données hivernales. Coefficients explosaient sur le test estival.
+- Fix : grid d'alpha avec minimum 500 pour C. RidgeCV contraint à alpha=1000.
+- Impact : -2.88 kWh. Coefficients stabilisés, meilleure généralisation printemps/été.
+
+**v4 → v5 : KNN non-paramétrique pour Poste C**
+
+- Problème : Ridge extrapolait encore mal pour C (biais -162 kWh). Relation température→conso non-linéaire.
+- Fix : remplacer Ridge par KNN (k=200, distance-weighted) avec 11 features météo uniquement pour C.
+- Impact : -13.1 kWh. KNN trouve des voisins similaires sans extrapoler. Mais sensible au choix de k et au distribution shift.
+
+**v5 → v6a : Sélection de features par poste**
+
+- Problème : features `clients_connectes` et `tstats_intelligents_connectes` causent de l'extrapolation quand le parc clients change (A: 25→52, C: 76→104).
+- Fix : tester `full`/`weather_only`/`weather+ratio`/`knn_11` par poste. A et C bénéficient de `weather+ratio` (retire les features clients absolus, garde le ratio).
+- Impact : -5.09 kWh. C passe de KNN à Ridge (meilleure généralisation avec peu de features).
+
+**v6a → v6b : Fenêtre de récence pour Poste C**
+
+- Problème : biais temporel croissant sur C — données de 2022 reflètent des patterns de consommation périmés (habitudes, efficacité, clients différents).
+- Fix : entraîner C sur les 9 derniers mois seulement (avril 2023–jan 2024, ~2138 lignes).
+- Impact : **-11.39 kWh** (la plus grande amélioration). Biais de C passe de +104 à +5 kWh.
+
+**v6b → v6 final : Correction de biais constante**
+
+- Problème : A sur-prédit de +14 kWh, B de +20 kWh. Décalage systématique dû au shift saisonnier train→test.
+- Fix : soustraire une constante optimisée par grid search (A: -14, B: -20, C: 0).
+- Impact : -7.90 kWh. Équivalent à corriger l'intercept post-entraînement.
+
+---
+
 ## Vue d'ensemble
 
 Ce document retrace les étapes d'optimisation du modèle de prédiction énergétique pour le projet Hydro-Québec (IFT6390). En quatre itérations principales, le RMSE est passé de **52.51 kWh** à **28.13 kWh**, soit une amélioration de **46%**.
