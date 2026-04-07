@@ -7,17 +7,17 @@
 
 ## 🗂️ Avancement du projet
 
-| Partie                              | Statut     | Notes                                                           |
-| ----------------------------------- | ---------- | --------------------------------------------------------------- |
-| Setup (données, vocab, features)    | ✅ Terminé | 10 479 train / 2 620 val, vocab = ~50 chars                     |
-| **1.1** MLP fixe + Prédiction 1     | ✅ Terminé | MSE val=473k, R²=0.12, écart=306k — sous-apprentissage confirmé |
-| **1.2** Comparaison optimiseurs     | ✅ Terminé | SGD+mom gagne (R²=0.21), Adam surapprend (R²=0.07), SGD lent (R²=0.13) |
-| **1.3** Deep MLP 5 couches ablation | 🔄 Code prêt | Code + notes faits, à exécuter pour remplir résultats          |
-| **2.1** LSTM                        | ⬜ À faire |                                                                 |
-| **2.3** Transformeur encodeur       | ⬜ À faire |                                                                 |
-| **3.1** Plongements SMI-TED         | ⬜ À faire |                                                                 |
-| **3.2** Sonde linéaire              | ⬜ À faire |                                                                 |
-| **3.3** Courbe d'efficacité         | ⬜ À faire |                                                                 |
+| Partie                              | Statut       | Notes                                                                              |
+| ----------------------------------- | ------------ | ---------------------------------------------------------------------------------- |
+| Setup (données, vocab, features)    | ✅ Terminé   | 10 479 train / 2 620 val, vocab = ~50 chars                                        |
+| **1.1** MLP fixe + Prédiction 1     | ✅ Terminé   | MSE val=473k, R²=0.12, écart=306k — sous-apprentissage confirmé                    |
+| **1.2** Comparaison optimiseurs     | ✅ Terminé   | SGD+mom gagne (R²=0.21), Adam surapprend (R²=0.07), SGD lent (R²=0.13)             |
+| **1.3** Deep MLP 5 couches ablation | ✅ Terminé   | ReLU+He gagne (R²=0.26), Sigmoid vanishing (norme≈0), BN/Drop contre-intuitif pire |
+| **2.1** LSTM                        | ✅ Terminé   | MSE=562k, R²=-0.04, écart=20k — sous-apprentissage, pire que MLP                   |
+| **2.3** Transformeur encodeur       | ✅ Terminé   | MSE=471k, R²=0.13, écart=54k — ≈ MLP, from-scratch = bottleneck                    |
+| **3.1** Plongements SMI-TED         | 🔄 Code prêt | Chargement + extraction + PCA/t-SNE coloré par Tc, à exécuter sur Colab            |
+| **3.2** Sonde linéaire              | 🔄 Code prêt | Linear(768,1) sur embeddings gelés, 769 params                                     |
+| **3.3** Courbe d'efficacité         | 🔄 Code prêt | 4 modèles × 4 fractions (10/25/50/100%), figure centrale                           |
 
 ---
 
@@ -372,11 +372,11 @@ for label, (model_opt, tl, vl) in results_12.items():
     report_results(tl, vl, vp, y_val, n_params_12, title=f"1.2 — {label}")
 ```
 
-| Optimiseur     | MSE val    | R² val | Écart train-val |
-| -------------- | ---------- | ------ | --------------- |
-| SGD            | 470 453    | 0.1273 | 85 986          |
-| SGD + momentum | **426 910**| **0.2080** | 118 375    |
-| Adam           | 499 192    | 0.0739 | 251 262         |
+| Optimiseur     | MSE val     | R² val     | Écart train-val |
+| -------------- | ----------- | ---------- | --------------- |
+| SGD            | 470 453     | 0.1273     | 85 986          |
+| SGD + momentum | **426 910** | **0.2080** | 118 375         |
+| Adam           | 499 192     | 0.0739     | 251 262         |
 
 **Analyse** :
 
@@ -387,7 +387,7 @@ for label, (model_opt, tl, vl) in results_12.items():
   - SGD+momentum convergence rapide ET stable — le momentum lisse les mises à jour sans sur-adapter, ce qui produit une meilleure régularisation implicite.
   - SGD pur finit avec le plus petit écart train-val (86k) — il n'a pas eu assez d'époques pour surapprendre, ce qui en fait le modèle le moins biaisé mais le plus lent.
 
-- **Impact de clip_grad_norm_(5.0)** : ajouté pour éviter les NaN de SGD. Ce seuil corrompt légèrement les estimées de variance de second moment d'Adam (qui attend des gradients non clippés), ce qui aggrave son instabilité aux époques tardives.
+- **Impact de clip*grad_norm*(5.0)** : ajouté pour éviter les NaN de SGD. Ce seuil corrompt légèrement les estimées de variance de second moment d'Adam (qui attend des gradients non clippés), ce qui aggrave son instabilité aux époques tardives.
 
 - **Leçon** : dans un régime de données limitées, l'adaptivité d'Adam peut être un défaut — il converge trop précisément vers les données d'entraînement. SGD+momentum offre un meilleur compromis vitesse/généralisation.
 
@@ -556,21 +556,24 @@ for label, (m, tl, vl, gn, np_) in results_13.items():
 
 ### Résultats
 
-| #   | Config                     | MSE val | R² val | Norme grad. L2 | Écart train-val | Nb. paramètres |
-| --- | -------------------------- | ------- | ------ | -------------- | --------------- | -------------- |
-| 1   | Sigmoid + défaut           |         |        |                |                 |                |
-| 2   | ReLU + He                  |         |        |                |                 |                |
-| 3   | ReLU + He + BN             |         |        |                |                 |                |
-| 4   | ReLU + He + BN + Drop(0.3) |         |        |                |                 |                |
+| #   | Config                     | MSE val     | R² val     | Norme grad. L2 | Écart train-val | Nb. paramètres |
+| --- | -------------------------- | ----------- | ---------- | -------------- | --------------- | -------------- |
+| 1   | Sigmoid + défaut           | 621 763     | -0.1534    | 0.000020       | -69 281         | 74 113         |
+| 2   | ReLU + He                  | **397 907** | **0.2618** | 400 308        | 376 075         | 74 113         |
+| 3   | ReLU + He + BN             | 607 664     | -0.1273    | 224 582        | 576 831         | 75 393         |
+| 4   | ReLU + He + BN + Drop(0.3) | 701 691     | -0.3017    | 679 569        | 553 673         | 75 393         |
 
-_(Compléter après exécution)_
+### Analyse des résultats
 
-### Analyse attendue
+- **Config 1 (Sigmoid + défaut) → vanishing confirmé** : Norme = 0.000020 (quasi-nul). Après 5 couches Sigmoid, le gradient arrive à ~0 → la 1ère couche ne s'update plus. R²=-0.15 = pire que prédire la moyenne. Écart train-val _négatif_ (-69k) = le modèle prédit mieux sur val que sur train, ce qui prouve qu'il n'a pas appris du tout (train loss reste élevée aussi). Décroissance quasi-linéaire dans la courbe = stagnation.
 
-- **Config 1** : gradient quasi-nul à la 1ère couche (vanishing) → le modèle ne converge pas ou très mal → MSE val ≈ variance de Tc (prédire la moyenne)
-- **Config 2** : ReLU + He résout le vanishing → chute rapide de la MSE val. Mais sans régularisation, surapprentissage probable (écart train-val élevé)
-- **Config 3** : BN stabilise + régularise → meilleure convergence, écart train-val réduit
-- **Config 4** : Dropout réduit encore l'écart train-val. MSE val potentiellement meilleure si le modèle surapprenait en config 3
+- **Config 2 (ReLU + He) → MEILLEURE CONFIG mais explosion de gradient** : R²=0.2618, seule config positive. Mais la norme = **400 308** → explosion massive. Adam absorbe cette instabilité grâce à la normalisation par variance adaptative ($v_t$), ce qui permet quand même la convergence. Surapprentissage important (écart=376k), mais le modèle a réellement appris quelque chose.
+
+- **Config 3 (+ BN) → contre-intuitif : pire que config 2** : BN était censé stabiliser mais R²=-0.13. Explication : sur 61 features tabulaires avec variance hétérogène, BN perturbe les échelles qui encodent de l'information réelle. Les statistiques de mini-lot (moy/var) sur un espace de si petite dimension sont bruyantes. De plus, l'ordre train/val de BN (utilise stats de mini-lot pendant train, mean/var globale à l'inférence) crée un décalage.
+
+- **Config 4 (+ BN + Dropout) → pire de tous** : R²=-0.30. Dropout retire 30% des neurones d'un réseau déjà peu expressif pour des features tabulaires. La combinaison explosion+Dropout+BN produit une instabilité maximale (norme=679k, écart=554k).
+
+- **Leçon** : 5 couches is too deep pour 61 features tabulaires. ReLU+He explose sans régularisation mais Adam compense partiellement. BN et Dropout, conçus pour des réseaux plus larges/profonds ou des images, interagissent mal avec les données tabulaires de faible dimension. **Pour des données tabulaires, 2-3 couches suffisent généralement** (voir résultat 1.1 : 2 couches + Adam = R²=0.12 avec stabilité vs. 5 couches + Adam = R²=0.26 avec explosion).
 
 ---
 
@@ -645,19 +648,422 @@ Entrée x ∈ ℝⁿ
 
 ### Prédiction 3
 
-_(À rédiger avant exécution)_
+> Le LSTM fera **légèrement mieux** que le MLP en validation, mais avec un **surapprentissage plus marqué**.
 
-### Code et résultats
+**Raisonnement** :
 
-_(À compléter)_
+- Le LSTM traite les caractères séquentiellement → il peut capturer l'**ordre** des atomes. `CCO` (éthanol) et `COC` (diméthyléther) produisent des séquences différentes, contrairement au bag-of-characters du MLP.
+- Mais avec ~10k exemples et des SMILES très variables (2-300+ chars), apprendre des patterns séquentiels **de zéro** est difficile.
+- Plus de paramètres (~85k vs ~25k) → risque de mémorisation.
+- Gain modéré en R², loin de ce que le transfer learning (Partie 3) apportera.
+
+### Pipeline
+
+```
+SMILES → indices (1-based, 0=PAD) → Embedding(32) → pack_padded_sequence → LSTM(128) → h_n[-1] → Linear(1) → Tc
+```
+
+### Code complet et commenté
+
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+# === Encodage séquentiel ===
+# 0 = PAD, 1..60 = caractères du vocab
+# Le PAD est ignoré par pack_padded_sequence → le LSTM ne voit que les vrais caractères
+PAD_IDX = 0
+char_to_idx_seq = {c: i + 1 for i, c in enumerate(vocab)}
+VOCAB_SIZE = len(vocab) + 1  # 61 (60 chars + 1 PAD)
+
+def smiles_to_indices(smiles):
+    """'CCO' → tensor([idx_C, idx_C, idx_O])"""
+    return torch.tensor([char_to_idx_seq[c] for c in smiles if c in char_to_idx_seq],
+                        dtype=torch.long)
+
+# === Dataset : stocke les séquences pré-converties ===
+class SMILESDataset(Dataset):
+    def __init__(self, smiles_list, targets):
+        # Pré-convertir toutes les séquences pour éviter de recalculer à chaque epoch
+        self.sequences = [smiles_to_indices(s) for s in smiles_list]
+        self.targets = torch.tensor(targets, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.sequences)
+
+    def __getitem__(self, idx):
+        return self.sequences[idx], self.targets[idx]
+
+def collate_smiles(batch):
+    """Fonction de collation pour DataLoader :
+    - Pad les séquences au max du mini-lot (pas au max global → plus efficace)
+    - Retourne aussi les longueurs originales pour pack_padded_sequence
+    """
+    seqs, targets = zip(*batch)
+    lengths = torch.tensor([len(s) for s in seqs])
+    # pad_sequence : complète les séquences courtes avec PAD_IDX
+    padded = pad_sequence(seqs, batch_first=True, padding_value=PAD_IDX)
+    return padded, lengths, torch.stack(targets)
+
+# === Modèle LSTM ===
+class LSTMRegressor(nn.Module):
+    def __init__(self, vocab_size, embed_dim=32, hidden_dim=128, num_layers=1):
+        super().__init__()
+        # Embedding : indice → vecteur dense de dim 32
+        # padding_idx=0 → le vecteur pour PAD est toujours zéro (pas de gradient)
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=PAD_IDX)
+        # LSTM : traite la séquence de gauche à droite
+        # h_t = f(h_{t-1}, x_t) — état caché accumule le contexte séquentiel
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, num_layers=num_layers,
+                            batch_first=True)
+        # Couche de sortie : état caché final → prédiction scalaire
+        self.fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x, lengths):
+        emb = self.embedding(x)                # (batch, seq_len, 32)
+        # pack_padded_sequence : retire les positions PAD du calcul LSTM
+        # → le LSTM ne voit que les vrais caractères, pas les zéros de padding
+        # enforce_sorted=False : pas besoin de trier par longueur décroissante
+        packed = pack_padded_sequence(emb, lengths.cpu(),
+                                     batch_first=True, enforce_sorted=False)
+        _, (h_n, _) = self.lstm(packed)        # h_n: (1, batch, 128)
+        # h_n[-1] = dernier état caché = résumé de toute la séquence
+        return self.fc(h_n[-1])                # (batch, 1)
+
+# === Boucle d'entraînement LSTM ===
+# Même structure que train_model/train_with_optimizer mais adapté au format (padded, lengths, targets)
+def train_lstm(model, train_loader, val_loader, lr=1e-3, epochs=100):
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    train_losses, val_losses = [], []
+
+    for epoch in range(epochs):
+        model.train()
+        epoch_loss, n_batches = 0.0, 0
+        for padded, lengths, targets in train_loader:
+            pred = model(padded, lengths).squeeze(-1)  # (batch,)
+            loss = criterion(pred, targets)
+            optimizer.zero_grad()
+            loss.backward()
+            # Clipping : les RNN sont sujets à l'explosion de gradient
+            # (le gradient est multiplié par W_hh à chaque pas de temps)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            optimizer.step()
+            epoch_loss += loss.item()
+            n_batches += 1
+        train_losses.append(epoch_loss / n_batches)
+
+        model.eval()
+        with torch.no_grad():
+            all_p, all_t = [], []
+            for padded, lengths, targets in val_loader:
+                pred = model(padded, lengths).squeeze(-1)
+                all_p.append(pred)
+                all_t.append(targets)
+            val_loss = criterion(torch.cat(all_p), torch.cat(all_t)).item()
+        val_losses.append(val_loss)
+
+    return model, train_losses, val_losses
+
+# === DataLoaders séquentiels (réutilisés pour Transformer) ===
+train_ds = SMILESDataset(train_df["smiles"].values, y_train)
+val_ds = SMILESDataset(val_df["smiles"].values, y_val)
+train_loader_seq = DataLoader(train_ds, batch_size=256, shuffle=True, collate_fn=collate_smiles)
+val_loader_seq = DataLoader(val_ds, batch_size=256, shuffle=False, collate_fn=collate_smiles)
+
+# === Entraînement ===
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+lstm_model = LSTMRegressor(VOCAB_SIZE, embed_dim=32, hidden_dim=128, num_layers=1)
+n_params_lstm = sum(p.numel() for p in lstm_model.parameters())
+print(f"LSTM : {n_params_lstm:,} paramètres")
+
+lstm_model, train_losses_lstm, val_losses_lstm = train_lstm(
+    lstm_model, train_loader_seq, val_loader_seq, lr=1e-3, epochs=100
+)
+
+# === Résultats ===
+lstm_model.eval()
+all_preds = []
+with torch.no_grad():
+    for padded, lengths, targets in val_loader_seq:
+        pred = lstm_model(padded, lengths).squeeze(-1)
+        all_preds.append(pred)
+val_pred_lstm = torch.cat(all_preds).numpy()
+
+mse_lstm, r2_lstm = report_results(
+    train_losses_lstm, val_losses_lstm, val_pred_lstm, y_val,
+    n_params_lstm, title="2.1 — LSTM"
+)
+```
+
+**Choix clés** :
+
+- **embed_dim=32** : vocabulaire petit (60 chars) → plongement compact suffisant. Plus grand = plus de paramètres sans bénéfice.
+- **hidden_dim=128** : même dimension que le MLP pour permettre une comparaison juste des architectures.
+- **pack_padded_sequence** : crucial pour ignorer le padding dans le calcul LSTM. Sans cela, le LSTM traite les zéros de padding comme des vrais tokens → bruit dans l'état caché.
+- **h_n[-1]** (pas output) : on utilise l'état caché final, pas les sorties à chaque pas. L'état final est le "résumé" de toute la séquence — c'est l'agrégation la plus simple et standard.
+- **clip*grad_norm*(5.0)** : les RNN propagent le gradient à travers le temps — le gradient est multiplié par $W_{hh}$ à chaque pas de temps (BPTT). Sans clipping, explosion exponentielle probable sur les longues séquences.
+
+### Résultats
+
+| Métrique        | Valeur  |
+| --------------- | ------- |
+| MSE val         | 561 551 |
+| R² val          | -0.0417 |
+| Nb. paramètres  | 85 025  |
+| Écart train-val | 20 055  |
+
+### Analyse
+
+Prédiction 3 carrément fausse — le LSTM fait pire que le MLP. R²≈0 veut dire qu'il prédit à peine mieux que la moyenne, pas "pire que le hasard". L'écart train-val de 20k = zéro surapprentissage, le modèle n'a même pas appris assez pour commencer à mémoriser.
+
+**Pourquoi ça échoue ?** Le bottleneck c'est les données, pas la capacité. L'embedding doit apprendre de zéro ce que chaque caractère veut dire — avec 10k exemples c'est pas assez. Le MLP triche : il voit les fréquences directement. Le LSTM doit redécouvrir cette info en lisant caractère par caractère → demande beaucoup plus de données.
+
+C'est le scénario classique de ch4 (généralisation) : augmenter la complexité n'aide pas quand le bottleneck est la quantité de données. C'est la motivation de la Partie 3 — le transfer learning apporte des représentations déjà apprises sur 91M de molécules.
+
+**Note sur les prédictions fausses** : c'est normal et attendu ! Le prof veut qu'on prédise sur la base de la théorie puis qu'on analyse _pourquoi_ la réalité diffère. La théorie dit "plus de capacité = meilleur fit", mais la pratique montre les limites du compromis biais-variance avec peu de données.
+
+---
+
+## Dérivations manuscrites — Partie 2
+
+### Calcul d'attention à la main (2.2)
+
+**Données** : SMILES `CCO`, $d_{\text{model}} = 4$, $d_k = 2$.
+
+**Plongements** (lignes de $E$) :
+
+$$E = \begin{pmatrix} 1 & 0 & 1 & 0 \\ 1 & 0 & 1 & 0 \\ 0 & 1 & 0 & 1 \end{pmatrix}$$
+
+(ligne 1 = C, ligne 2 = C, ligne 3 = O)
+
+#### Étape 1 : Calcul de $Q$, $K$, $V$
+
+$Q = EW_Q$ :
+
+$$Q = \begin{pmatrix} 1 & 0 & 1 & 0 \\ 1 & 0 & 1 & 0 \\ 0 & 1 & 0 & 1 \end{pmatrix} \begin{pmatrix} 1 & 0 \\ 0 & 1 \\ 1 & 1 \\ 0 & 0 \end{pmatrix} = \begin{pmatrix} 1{\cdot}1 + 0{\cdot}0 + 1{\cdot}1 + 0{\cdot}0 & 1{\cdot}0 + 0{\cdot}1 + 1{\cdot}1 + 0{\cdot}0 \\ \text{idem} & \text{idem} \\ 0{\cdot}1 + 1{\cdot}0 + 0{\cdot}1 + 1{\cdot}0 & 0{\cdot}0 + 1{\cdot}1 + 0{\cdot}1 + 1{\cdot}0 \end{pmatrix} = \begin{pmatrix} 2 & 1 \\ 2 & 1 \\ 0 & 1 \end{pmatrix}$$
+
+$K = EW_K$ :
+
+$$K = \begin{pmatrix} 1 & 0 & 1 & 0 \\ 1 & 0 & 1 & 0 \\ 0 & 1 & 0 & 1 \end{pmatrix} \begin{pmatrix} 0 & 1 \\ 1 & 0 \\ 0 & 1 \\ 1 & 0 \end{pmatrix} = \begin{pmatrix} 0 & 2 \\ 0 & 2 \\ 2 & 0 \end{pmatrix}$$
+
+$V = EW_V$ :
+
+$$V = \begin{pmatrix} 1 & 0 & 1 & 0 \\ 1 & 0 & 1 & 0 \\ 0 & 1 & 0 & 1 \end{pmatrix} \begin{pmatrix} 1 & 1 \\ 0 & 0 \\ 1 & 0 \\ 0 & 1 \end{pmatrix} = \begin{pmatrix} 2 & 1 \\ 2 & 1 \\ 0 & 1 \end{pmatrix}$$
+
+#### Étape 2 : Scores d'attention $S = QK^\top / \sqrt{d_k}$
+
+$$QK^\top = \begin{pmatrix} 2 & 1 \\ 2 & 1 \\ 0 & 1 \end{pmatrix} \begin{pmatrix} 0 & 0 & 2 \\ 2 & 2 & 0 \end{pmatrix} = \begin{pmatrix} 2 & 2 & 4 \\ 2 & 2 & 4 \\ 2 & 2 & 0 \end{pmatrix}$$
+
+$$S = \frac{QK^\top}{\sqrt{2}} = \begin{pmatrix} \sqrt{2} & \sqrt{2} & 2\sqrt{2} \\ \sqrt{2} & \sqrt{2} & 2\sqrt{2} \\ \sqrt{2} & \sqrt{2} & 0 \end{pmatrix} \approx \begin{pmatrix} 1.414 & 1.414 & 2.828 \\ 1.414 & 1.414 & 2.828 \\ 1.414 & 1.414 & 0 \end{pmatrix}$$
+
+#### Étape 3 : Softmax (par ligne)
+
+**Lignes 1 et 2** (identiques car $q_C = q_C$) : $s = [\sqrt{2}, \sqrt{2}, 2\sqrt{2}]$
+
+- $e^{\sqrt{2}} \approx 4.113$, $e^{2\sqrt{2}} \approx 16.919$
+- Somme = $4.113 + 4.113 + 16.919 = 25.145$
+- $A_{1,:} = A_{2,:} = [0.1636, \; 0.1636, \; 0.6727]$
+
+**Ligne 3** (O) : $s = [\sqrt{2}, \sqrt{2}, 0]$
+
+- $e^0 = 1$
+- Somme = $4.113 + 4.113 + 1 = 9.226$
+- $A_{3,:} = [0.4459, \; 0.4459, \; 0.1084]$
+
+$$A = \text{softmax}(S) \approx \begin{pmatrix} 0.164 & 0.164 & 0.673 \\ 0.164 & 0.164 & 0.673 \\ 0.446 & 0.446 & 0.108 \end{pmatrix}$$
+
+#### Étape 4 : Sortie $O = AV$
+
+$$O = \begin{pmatrix} 0.164 & 0.164 & 0.673 \\ 0.164 & 0.164 & 0.673 \\ 0.446 & 0.446 & 0.108 \end{pmatrix} \begin{pmatrix} 2 & 1 \\ 2 & 1 \\ 0 & 1 \end{pmatrix} = \begin{pmatrix} 0.655 & 1.0 \\ 0.655 & 1.0 \\ 1.784 & 1.0 \end{pmatrix}$$
+
+Vérification : la 2e colonne de $V$ est $(1, 1, 1)^\top$ et $\sum_j A_{ij} = 1$ → la 2e colonne de $O$ vaut toujours 1.0. ✓
+
+#### Interprétation
+
+- Les deux atomes C **attendent fortement l'oxygène** (poids 0.67) : le score Q-K est maximal ($2\sqrt{2}$) entre la query de C et la key de O. Cela reflète qu'en chimie, l'oxygène change fortement les propriétés.
+- L'oxygène **attend les deux C de manière symétrique** (poids 0.45 chacun) : les deux C ont les mêmes plongements, donc les mêmes keys → scores identiques.
+- Les deux C identiques produisent la **même sortie** car ils ont les mêmes queries et voient les mêmes keys/values.
 
 ---
 
 ## Partie 2.3 — Transformeur encodeur
 
-### Code et résultats
+### Pipeline
 
-_(À compléter)_
+```
+SMILES → indices (0=PAD) → Embedding(64) → + PE sinusoïdal → TransformerEncoder(2 couches, 4 têtes) → mean pooling masqué → Linear(1) → Tc
+```
+
+### Code complet et commenté
+
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+import math
+
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+# === Encodage positionnel sinusoïdal ===
+# Injecte l'information de position dans le modèle (le Transformer n'a pas de récurrence)
+# PE(pos, 2i) = sin(pos / 10000^{2i/d_model})
+# PE(pos, 2i+1) = cos(pos / 10000^{2i/d_model})
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=512):
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2, dtype=torch.float32) * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        # register_buffer : pas un paramètre apprenable, mais sauvegardé avec le modèle
+        self.register_buffer('pe', pe.unsqueeze(0))  # (1, max_len, d_model)
+
+    def forward(self, x):
+        return x + self.pe[:, :x.size(1)]
+
+
+# === Transformeur encodeur pour régression ===
+class TransformerRegressor(nn.Module):
+    def __init__(self, vocab_size, d_model=64, nhead=4, num_layers=2,
+                 dim_feedforward=128, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=PAD_IDX)
+        self.pos_encoder = SinusoidalPositionalEncoding(d_model, max_len=512)
+        # Chaque couche : MultiHeadAttention + FFN + LayerNorm + résiduel
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward,
+            dropout=dropout, batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(d_model, 1)
+
+    def forward(self, x, lengths):
+        # Tronquer au MAX_LEN=128 pour éviter l'explosion O(n²)
+        # Certains SMILES font 300+ chars → matrices 300×300 par tête = très lent
+        x = x[:, :MAX_LEN]
+        lengths = lengths.clamp(max=MAX_LEN)
+
+        # Masque de padding : True = ignorer cette position
+        pad_mask = (x == PAD_IDX)  # (batch, seq_len)
+        emb = self.embedding(x)     # (batch, seq_len, d_model)
+        emb = self.pos_encoder(emb)
+        # Le masque empêche l'attention de regarder les positions PAD
+        out = self.transformer_encoder(emb, src_key_padding_mask=pad_mask)
+
+        # Mean pooling masqué : moyenne uniquement sur les positions réelles
+        # Différence avec LSTM : LSTM utilise h_n[-1] (dernier état),
+        # le Transformer n'a pas d'ordre → on prend la moyenne
+        mask = (~pad_mask).unsqueeze(-1).float()  # (batch, seq_len, 1)
+        pooled = (out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)  # (batch, d_model)
+        return self.fc(pooled)
+
+
+# === Boucle d'entraînement (même format que LSTM) ===
+def train_transformer(model, train_loader, val_loader, lr=1e-3, epochs=100):
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    train_losses, val_losses = [], []
+
+    for epoch in range(epochs):
+        model.train()
+        epoch_loss, n_batches = 0.0, 0
+        for padded, lengths, targets in train_loader:
+            pred = model(padded, lengths).squeeze(-1)
+            loss = criterion(pred, targets)
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            optimizer.step()
+            epoch_loss += loss.item()
+            n_batches += 1
+        train_losses.append(epoch_loss / n_batches)
+
+        model.eval()
+        with torch.no_grad():
+            all_p, all_t = [], []
+            for padded, lengths, targets in val_loader:
+                pred = model(padded, lengths).squeeze(-1)
+                all_p.append(pred)
+                all_t.append(targets)
+            val_loss = criterion(torch.cat(all_p), torch.cat(all_t)).item()
+        val_losses.append(val_loss)
+
+    return model, train_losses, val_losses
+
+
+# === Entraînement ===
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+transformer_model = TransformerRegressor(
+    VOCAB_SIZE, d_model=64, nhead=4, num_layers=2, dim_feedforward=128, dropout=0.1
+)
+n_params_tf = sum(p.numel() for p in transformer_model.parameters())
+print(f"Transformeur : {n_params_tf:,} paramètres")
+
+transformer_model, train_losses_tf, val_losses_tf = train_transformer(
+    transformer_model, train_loader_seq, val_loader_seq, lr=1e-3, epochs=100
+)
+
+# === Résultats ===
+transformer_model.eval()
+all_preds_tf = []
+with torch.no_grad():
+    for padded, lengths, targets in val_loader_seq:
+        pred = transformer_model(padded, lengths).squeeze(-1)
+        all_preds_tf.append(pred)
+val_pred_tf = torch.cat(all_preds_tf).numpy()
+
+mse_tf, r2_tf = report_results(
+    train_losses_tf, val_losses_tf, val_pred_tf, y_val,
+    n_params_tf, title="2.3 — Transformeur encodeur"
+)
+```
+
+**Choix clés** :
+
+- **d_model=64, nhead=4** : chaque tête d'attention a $d_k = 64/4 = 16$ dims. Plus grand → plus de paramètres → risque de surapprentissage sur 10k exemples.
+- **num_layers=2** : consigne de l'énoncé. Profondeur minimale pour capturer des interactions multi-niveaux.
+- **dim_feedforward=128** : FFN interne de chaque couche. Ratio 2:1 avec d_model (standard = 4:1 dans les gros modèles).
+- **dropout=0.1** : régularisation légère. Plus agressif risque de casser l'apprentissage sur peu de données.
+- **PE sinusoïdal** (pas appris) : avec <512 positions et <10k exemples, un PE appris surapprend. Le sinusoïdal généralise sans paramètres.
+- **Mean pooling masqué** (pas CLS token) : pas de token spécial à apprendre. La moyenne est plus robuste avec peu de données.
+- **src_key_padding_mask** : empêche l'attention de regarder les PADs → les poids softmax ne sont calculés que sur les vrais tokens.
+
+### Résultats
+
+| Métrique        | Valeur  |
+| --------------- | ------- |
+| MSE val         | 470 584 |
+| R² val          | 0.1270  |
+| Nb. paramètres  | 70 913  |
+| Écart train-val | 53 557  |
+
+### Analyse
+
+R²=0.13 ≈ MLP (0.12). Le Transformer from scratch ne fait pas mieux qu'un simple comptage de caractères. Pourquoi ?
+
+1. **Attention ≈ bag-of-chars** : avec 10k exemples, le Transformer n'apprend pas de patterns d'attention chimiquement significatifs. Le mean pooling masqué revient à pondérer les fréquences de caractères — exactement ce que le MLP fait directement via les features fixes.
+
+2. **Trop peu de données pour l'embedding** : comme le LSTM, le Transformer doit apprendre son embedding from scratch. Mais contrairement au LSTM (R²=-0.04), l'attention globale permet au moins de voir tous les caractères simultanément → performance comparable au MLP.
+
+3. **Écart modéré** (53k) : entre le LSTM (20k, sous-apprentissage pur) et le MLP (306k, surapprentissage fort). Le dropout=0.1 + l'attention régularisent légèrement.
+
+4. **Troncation MAX_LEN=64** : impact négligeable car ~85% des SMILES font <50 chars. Les rares molécules tronquées (polymères longs) ne changent pas les statistiques globales.
+
+**Conclusion** : le bottleneck n'est pas l'architecture mais la qualité des représentations. Le transfer learning (Partie 3) devrait résoudre ce problème en fournissant des embeddings pré-entraînés sur 91M de molécules.
 
 ---
 
@@ -665,40 +1071,331 @@ _(À compléter)_
 
 | Modèle       | MSE val | R² val | Nb. paramètres | Écart train-val |
 | ------------ | ------- | ------ | -------------- | --------------- |
-| MLP          |         |        |                |                 |
-| LSTM         |         |        |                |                 |
-| Transformeur |         |        |                |                 |
+| MLP          | 473 172 | 0.12   | 24 577         | 306 085         |
+| LSTM         | 561 551 | -0.04  | 85 025         | 20 055          |
+| Transformeur | 470 584 | 0.13   | 70 913         | 53 557          |
 
 ---
 
 ## Partie 3.1 — Plongements SMI-TED
 
-### Code et résultats
+### Concept
 
-_(À compléter)_
+SMI-TED est un modèle de fondation pré-entraîné sur **91M de molécules**. Il encode chaque SMILES en un vecteur de 768 dimensions qui capture la structure chimique. La différence fondamentale avec nos modèles (MLP, LSTM, Transformer) : ceux-ci apprennent les représentations from scratch sur 10k exemples, alors que SMI-TED a déjà vu 91M de molécules → les plongements sont riches et informatifs dès le départ.
+
+### Code complet et commenté
+
+```python
+import os, sys, torch
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+
+# === Chargement de SMI-TED ===
+# On clone le dépôt IBM et installe les dépendances
+!git clone --depth 1 https://github.com/IBM/materials.git /tmp/materials 2>/dev/null || true
+!pip install -q pytorch-fast-transformers torch-optimizer huggingface_hub
+
+SMI_TED_DIR = "/tmp/materials/models/smi_ted/inference/smi_ted_light"
+CKPT_FILENAME = "smi-ted-Light_40.pt"  # Nom exact sur HuggingFace
+if not os.path.exists(os.path.join(SMI_TED_DIR, CKPT_FILENAME)):
+    from huggingface_hub import hf_hub_download
+    hf_hub_download(repo_id="ibm-research/materials.smi-ted",
+                    filename=CKPT_FILENAME, local_dir=SMI_TED_DIR)
+
+sys.path.insert(0, "/tmp/materials/models/smi_ted/inference")
+from load import load_smi_ted
+
+smi_ted = load_smi_ted(folder=SMI_TED_DIR, ckpt_filename=CKPT_FILENAME)
+smi_ted.eval()
+
+# === Extraction des plongements (par lots pour éviter OOM) ===
+BATCH_EMB = 256
+
+def extract_embeddings(smiles_list):
+    """Extrait les plongements SMI-TED (768 dims) par lots."""
+    all_emb = []
+    for i in range(0, len(smiles_list), BATCH_EMB):
+        batch = smiles_list[i:i + BATCH_EMB].tolist()
+        with torch.no_grad():
+            emb = smi_ted.encode(batch, return_torch=True)
+        all_emb.append(emb.cpu())
+    return torch.cat(all_emb).numpy()
+
+emb_train = extract_embeddings(train_df["smiles"].values)  # (10479, 768)
+emb_val = extract_embeddings(val_df["smiles"].values)      # (2620, 768)
+
+# === Visualisation PCA + t-SNE colorée par Tc ===
+emb_all = np.vstack([emb_train, emb_val])
+tc_all = np.concatenate([y_train, y_val])
+
+pca = PCA(n_components=2)
+emb_2d_pca = pca.fit_transform(emb_all)
+
+# t-SNE sur sous-échantillon (3000 points — t-SNE est O(n²))
+N_TSNE = 3000
+idx_sub = np.random.choice(len(emb_all), N_TSNE, replace=False)
+tsne = TSNE(n_components=2, perplexity=30, random_state=SEED, n_iter=1000)
+emb_2d_tsne = tsne.fit_transform(emb_all[idx_sub])
+```
+
+**Choix clés** :
+
+- **Extraction par lots de 256** : le modèle SMI-TED est lourd en mémoire. Encoder 10k SMILES d'un coup → OOM.
+- **PCA sur toutes les données, t-SNE sur 3000** : PCA est linéaire O(n), t-SNE est O(n²) → trop lent sur 13k points.
+- **Coloré par Tc** : on veut voir si les plongements séparent naturellement les molécules par température critique. Si oui → une simple couche linéaire suffit (3.2).
+
+### Résultats
+
+_(Compléter après exécution)_
 
 ---
 
 ## Partie 3.2 — Sonde linéaire
 
-### Code et résultats
+### Concept
 
-_(À compléter)_
+Geler SMI-TED (pas de fine-tuning) et entraîner uniquement une couche `Linear(768, 1)` sur les plongements. C'est la manière la plus simple d'exploiter un modèle de fondation — si ça marche bien, c'est que les embeddings sont déjà linéairement séparables par rapport à Tc.
+
+### Code complet et commenté
+
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+from torch.utils.data import TensorDataset, DataLoader
+
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+# === Préparer les plongements comme tenseurs ===
+# emb_train/emb_val viennent de la cellule 3.1 (numpy arrays, shape (N, 768))
+emb_train_t = torch.tensor(emb_train, dtype=torch.float32)
+emb_val_t = torch.tensor(emb_val, dtype=torch.float32)
+
+# Normalisation z-score (stats du train seulement)
+emb_mean = emb_train_t.mean(dim=0)
+emb_std = emb_train_t.std(dim=0) + 1e-8
+emb_train_norm = (emb_train_t - emb_mean) / emb_std
+emb_val_norm = (emb_val_t - emb_mean) / emb_std
+
+train_loader_emb = DataLoader(
+    TensorDataset(emb_train_norm, y_train_t),
+    batch_size=256, shuffle=True
+)
+
+# === Sonde linéaire : une seule couche Linear(768, 1) ===
+# 769 paramètres (768 poids + 1 biais) — véritablement minimal
+linear_probe = nn.Linear(768, 1)
+n_params_probe = sum(p.numel() for p in linear_probe.parameters())
+
+# Entraînement Adam, 100 epochs (même budget que les autres modèles)
+optimizer = torch.optim.Adam(linear_probe.parameters(), lr=1e-3)
+criterion = nn.MSELoss()
+train_losses_probe, val_losses_probe = [], []
+
+for epoch in range(100):
+    linear_probe.train()
+    epoch_loss, n_batches = 0.0, 0
+    for xb, yb in train_loader_emb:
+        pred = linear_probe(xb)
+        loss = criterion(pred, yb)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        epoch_loss += loss.item()
+        n_batches += 1
+    train_losses_probe.append(epoch_loss / n_batches)
+
+    linear_probe.eval()
+    with torch.no_grad():
+        val_pred_probe = linear_probe(emb_val_norm)
+        val_loss = criterion(val_pred_probe, y_val_t).item()
+    val_losses_probe.append(val_loss)
+
+# === Résultats ===
+linear_probe.eval()
+with torch.no_grad():
+    val_pred_probe = linear_probe(emb_val_norm).numpy()
+
+mse_probe, r2_probe = report_results(
+    train_losses_probe, val_losses_probe, val_pred_probe, y_val,
+    n_params_probe, title="3.2 — Sonde linéaire (SMI-TED gelé)"
+)
+```
+
+**Choix clés** :
+
+- **Geler SMI-TED** : on n'entraîne pas le modèle de fondation, on utilise ses embeddings comme features fixes. C'est le "linear probe" standard en transfer learning.
+- **Normalisation z-score** : les 768 dimensions ont des échelles différentes. Sans normalisation, les grandes dimensions dominent le gradient.
+- **769 paramètres** : le modèle le plus simple possible. Si R² est élevé, c'est que SMI-TED a déjà encodé Tc de manière quasi-linéaire.
+
+### Résultats
+
+_(Compléter après exécution)_
 
 ---
 
 ## Partie 3.3 — Courbe d'efficacité en échantillons
 
-### Résultats
+### Concept
 
-_(À compléter)_
+Entraîner les 4 modèles (MLP, LSTM, Transformer, SMI-TED+sonde) sur 10%, 25%, 50%, 100% des données d'entraînement. Le set de validation reste fixe. Objectif : montrer que SMI-TED est plus efficace en données (data-efficient) car ses embeddings sont déjà informatifs.
 
-| Modèle          | MSE val | R² val | Nb. paramètres | Écart train-val |
-| --------------- | ------- | ------ | -------------- | --------------- |
-| MLP             |         |        |                |                 |
-| LSTM            |         |        |                |                 |
-| Transformeur    |         |        |                |                 |
-| SMI-TED + sonde |         |        |                |                 |
+### Code complet et commenté
+
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+import time
+
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+FRACTIONS = [0.10, 0.25, 0.50, 1.00]
+
+# === Fonctions d'entraînement simplifiées (retourne MSE val) ===
+# Chaque fonction recrée le modèle avec SEED fixe, entraîne 100 epochs,
+# et retourne la MSE de validation finale.
+
+def train_mlp_quick(X_tr, y_tr, X_v, y_v, epochs=100):
+    torch.manual_seed(SEED)
+    model = MLP(X_tr.shape[1], hidden_dim=128)
+    loader = DataLoader(TensorDataset(X_tr, y_tr.unsqueeze(1)), batch_size=256, shuffle=True)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    crit = nn.MSELoss()
+    for _ in range(epochs):
+        model.train()
+        for xb, yb in loader:
+            opt.zero_grad(); crit(model(xb), yb).backward(); opt.step()
+    model.eval()
+    with torch.no_grad():
+        return crit(model(X_v), y_v.unsqueeze(1)).item()
+
+def train_lstm_quick(train_smiles, y_tr, val_smiles, y_v, epochs=100):
+    torch.manual_seed(SEED)
+    tr_ds = SMILESDataset(train_smiles, y_tr)
+    v_ds = SMILESDataset(val_smiles, y_v)
+    tr_loader = DataLoader(tr_ds, batch_size=256, shuffle=True, collate_fn=collate_smiles)
+    v_loader = DataLoader(v_ds, batch_size=256, shuffle=False, collate_fn=collate_smiles)
+    model = LSTMRegressor(VOCAB_SIZE, embed_dim=32, hidden_dim=128)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    crit = nn.MSELoss()
+    for _ in range(epochs):
+        model.train()
+        for p, l, t in tr_loader:
+            opt.zero_grad()
+            crit(model(p, l).squeeze(-1), t).backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            opt.step()
+    model.eval()
+    with torch.no_grad():
+        preds, targs = [], []
+        for p, l, t in v_loader:
+            preds.append(model(p, l).squeeze(-1)); targs.append(t)
+        return crit(torch.cat(preds), torch.cat(targs)).item()
+
+def train_tf_quick(train_smiles, y_tr, val_smiles, y_v, epochs=100):
+    torch.manual_seed(SEED)
+    tr_ds = SMILESDataset(train_smiles, y_tr)
+    v_ds = SMILESDataset(val_smiles, y_v)
+    tr_loader = DataLoader(tr_ds, batch_size=256, shuffle=True, collate_fn=collate_smiles_truncated)
+    v_loader = DataLoader(v_ds, batch_size=256, shuffle=False, collate_fn=collate_smiles_truncated)
+    model = TransformerRegressor(VOCAB_SIZE, d_model=64, nhead=4, num_layers=2,
+                                  dim_feedforward=128, dropout=0.1)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    crit = nn.MSELoss()
+    for _ in range(epochs):
+        model.train()
+        for p, l, t in tr_loader:
+            opt.zero_grad()
+            crit(model(p, l).squeeze(-1), t).backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            opt.step()
+    model.eval()
+    with torch.no_grad():
+        preds, targs = [], []
+        for p, l, t in v_loader:
+            preds.append(model(p, l).squeeze(-1)); targs.append(t)
+        return crit(torch.cat(preds), torch.cat(targs)).item()
+
+def train_probe_quick(emb_tr, y_tr, emb_v, y_v, epochs=100):
+    torch.manual_seed(SEED)
+    mu, sigma = emb_tr.mean(dim=0), emb_tr.std(dim=0) + 1e-8
+    emb_tr_n = (emb_tr - mu) / sigma
+    emb_v_n = (emb_v - mu) / sigma
+    model = nn.Linear(768, 1)
+    loader = DataLoader(TensorDataset(emb_tr_n, y_tr.unsqueeze(1)), batch_size=256, shuffle=True)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    crit = nn.MSELoss()
+    for _ in range(epochs):
+        model.train()
+        for xb, yb in loader:
+            opt.zero_grad(); crit(model(xb), yb).backward(); opt.step()
+    model.eval()
+    with torch.no_grad():
+        return crit(model(emb_v_n), y_v.unsqueeze(1)).item()
+
+# === Boucle : chaque fraction × chaque modèle ===
+results_eff = {name: [] for name in ["MLP", "LSTM", "Transformeur", "SMI-TED + sonde"]}
+
+for frac in FRACTIONS:
+    n = int(len(train_df) * frac)
+    np.random.seed(SEED)
+    idx = np.random.choice(len(train_df), n, replace=False)
+    idx.sort()
+
+    sub_smiles = train_df["smiles"].values[idx]
+    sub_y = y_train[idx]
+    sub_X = X_train_t[idx]
+    sub_y_t = y_train_t[idx]
+    sub_emb = emb_train_t[idx]
+
+    print(f"\nFraction = {frac:.0%} ({n} exemples)")
+    t0 = time.time()
+
+    mse = train_mlp_quick(sub_X, sub_y_t.squeeze(), X_val_t, y_val_t.squeeze())
+    results_eff["MLP"].append(mse)
+    print(f"  MLP           : {mse:,.0f}  ({time.time()-t0:.0f}s)")
+
+    t1 = time.time()
+    mse = train_lstm_quick(sub_smiles, sub_y, val_df["smiles"].values, y_val)
+    results_eff["LSTM"].append(mse)
+    print(f"  LSTM          : {mse:,.0f}  ({time.time()-t1:.0f}s)")
+
+    t1 = time.time()
+    mse = train_tf_quick(sub_smiles, sub_y, val_df["smiles"].values, y_val)
+    results_eff["Transformeur"].append(mse)
+    print(f"  Transformeur  : {mse:,.0f}  ({time.time()-t1:.0f}s)")
+
+    t1 = time.time()
+    mse = train_probe_quick(sub_emb, torch.tensor(sub_y, dtype=torch.float32),
+                            emb_val_t, torch.tensor(y_val, dtype=torch.float32))
+    results_eff["SMI-TED + sonde"].append(mse)
+    print(f"  SMI-TED+sonde : {mse:,.0f}  ({time.time()-t1:.0f}s)")
+
+# === Graphique ===
+sizes = [int(len(train_df) * f) for f in FRACTIONS]
+plt.figure(figsize=(9, 5))
+for name, mses in results_eff.items():
+    plt.plot(sizes, mses, 'o-', label=name, linewidth=2, markersize=6)
+plt.xlabel("Nombre d'exemples d'entraînement")
+plt.ylabel("MSE de validation")
+plt.title("3.3 — Efficacité en échantillons")
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+```
+
+### Résultats attendus
+
+- **SMI-TED + sonde** devrait dominer à toutes les fractions, surtout à 10% où les modèles from-scratch n'ont presque rien à apprendre.
+- **MLP** et **Transformer** devraient se suivre de près (bag-of-chars).
+- **LSTM** sera le pire à toutes les fractions (embedding from scratch trop dur).
+- La courbe SMI-TED sera **plate** (peu sensible à la quantité de données) car les embeddings sont déjà informatifs.
 
 ---
 
