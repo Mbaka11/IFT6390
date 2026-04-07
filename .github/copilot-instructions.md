@@ -30,20 +30,24 @@ TP_and_projects/Project_2/        → Current: neural network project (molecules
 ## Current Project: Devoir 2 — Prédiction de la température critique
 
 ### Objective
+
 Predict the **critical temperature (Tc)** of molecules from their **SMILES** string representation using neural networks.
 
 ### Dataset
+
 - Source: `chedl_thermo_properties.csv` (~24,600 molecules, ~13,100 with Tc)
 - Train/Val split: 80/20 with `random_state=42`
 - Target: `Tc` (critical temperature in Kelvin)
 - Input: `SMILES` strings (text encoding of molecular structure)
 
 ### Project Structure (3 parts)
+
 1. **Part 1 — MLP & Optimization**: Fixed character-frequency features → MLP, optimizer comparison (SGD, Momentum, Adam), deep MLP with activation/init/batchnorm/dropout ablation
 2. **Part 2 — Sequential & Attention Models**: LSTM on character sequences, Transformer encoder with sinusoidal positional encoding, model comparison table
 3. **Part 3 — Transfer Learning**: SMI-TED pre-trained embeddings, linear probe, sample efficiency curves across all 4 models
 
 ### Key Constraints
+
 - Use **MSE** as the loss function and primary evaluation metric
 - Also report **R²** for model comparison
 - For each model, track: MSE val, R² val, parameter count, train-val gap
@@ -63,6 +67,7 @@ Predict the **critical temperature (Tc)** of molecules from their **SMILES** str
 ## Course Content Reference
 
 When explaining ML concepts, align with the course material in `Course_content/Markdown_content/`:
+
 - Neural networks: `ch7_neural_networks.md`
 - Optimization & training: `ch8_optimization.md`
 - ConvNets, RNNs, Autoencoders: `ch9_*.md`
