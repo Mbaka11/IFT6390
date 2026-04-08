@@ -15,9 +15,9 @@
 | **1.3** Deep MLP 5 couches ablation | ✅ Terminé   | ReLU+He gagne (R²=0.26), Sigmoid vanishing (norme≈0), BN/Drop contre-intuitif pire |
 | **2.1** LSTM                        | ✅ Terminé   | MSE=562k, R²=-0.04, écart=20k — sous-apprentissage, pire que MLP                   |
 | **2.3** Transformeur encodeur       | ✅ Terminé   | MSE=471k, R²=0.13, écart=54k — ≈ MLP, from-scratch = bottleneck                    |
-| **3.1** Plongements SMI-TED         | 🔄 Code prêt | Chargement + extraction + PCA/t-SNE coloré par Tc, à exécuter sur Colab            |
-| **3.2** Sonde linéaire              | 🔄 Code prêt | Linear(768,1) sur embeddings gelés, 769 params                                     |
-| **3.3** Courbe d'efficacité         | 🔄 Code prêt | 4 modèles × 4 fractions (10/25/50/100%), figure centrale                           |
+| **3.1** Plongements SMI-TED         | ✅ Terminé   | PCA 72.2% variance, gradient Tc visible, clusters t-SNE cohérents                  |
+| **3.2** Sonde linéaire              | ✅ Terminé   | MSE=967k, R²=-0.79, écart=11k — relation non-linéaire, head trop simple            |
+| **3.3** Courbe d'efficacité         | ✅ Terminé   | SMI-TED pire partout, Transformer gagne à 100%, MLP anomalie à 50%                 |
 
 ---
 
@@ -1148,7 +1148,15 @@ emb_2d_tsne = tsne.fit_transform(emb_all[idx_sub])
 
 ### Résultats
 
-_(Compléter après exécution)_
+| Métrique | Valeur |
+| -------- | ------ |
+| Variance expliquée par PCA (2 composantes) | 72.2 % |
+| Gradient Tc visible en PCA | Oui — jaune (Tc élevé) vs violet (Tc faible) |
+| Clusters t-SNE | Familles chimiques identifiables, couleur Tc homogène |
+
+**Analyse** :
+
+La PCA réduit 768 dimensions à 2 composantes tout en conservant 72.2 % de la variance totale, ce qui indique que l'espace des plongements SMI-TED possède une structure géométrique forte et compacte. Sur le graphique PCA, on observe un gradient de couleur cohérent le long des axes principaux : les molécules à Tc élevé tendent à se regrouper d'un côté, et celles à Tc faible de l'autre. Le graphique t-SNE révèle des clusters locaux correspondant probablement à des familles chimiques. Ces résultats justifient l'approche par sonde linéaire de 3.2 — mais comme on le verra, la structure visible ne signifie pas que la relation est linéaire.
 
 ---
 
@@ -1233,7 +1241,17 @@ mse_probe, r2_probe = report_results(
 
 ### Résultats
 
-_(Compléter après exécution)_
+| Métrique        | Valeur   |
+| --------------- | -------- |
+| MSE val         | 967 000  |
+| R² val          | -0.79    |
+| Nb. paramètres  | 769      |
+| Train MSE       | ~956 000 |
+| Écart train-val | 11 435   |
+
+**Analyse** :
+
+La sonde linéaire obtient R² = -0.79 et MSE = 967k, nettement pire que tous les modèles from scratch. Malgré la structure visible en PCA (72.2% de variance, gradient de Tc), la relation entre plongements et Tc n'est pas linéaire. SMI-TED a été pré-entraîné pour reconstruire des SMILES, pas pour prédire des propriétés thermodynamiques. L'espace est organisé selon la structure moléculaire, mais Tc dépend de combinaisons non-linéaires complexes. Avec 769 paramètres et une couche Linear(768,1), la sonde ne peut pas capturer ces interactions. L'écart train-val de ~11k confirme qu'il n'y a aucun surapprentissage. Pour exploiter correctement ces plongements, il faudrait un head non-linéaire (MLP 2-3 couches) ou du fine-tuning de SMI-TED.
 
 ---
 
@@ -1396,6 +1414,23 @@ plt.show()
 - **MLP** et **Transformer** devraient se suivre de près (bag-of-chars).
 - **LSTM** sera le pire à toutes les fractions (embedding from scratch trop dur).
 - La courbe SMI-TED sera **plate** (peu sensible à la quantité de données) car les embeddings sont déjà informatifs.
+
+### Résultats réels
+
+| Fraction | MLP       | LSTM      | Transformeur | SMI-TED + sonde |
+| -------- | --------- | --------- | ------------ | --------------- |
+| 10%      | 514 000   | 937 000   | 921 000      | 1 019 000       |
+| 25%      | 668 000   | 845 000   | 721 000      | 1 004 000       |
+| 50%      | 3 277 000 | 719 000   | 520 000      | 988 000         |
+| 100%     | 473 000   | 561 000   | 437 000      | 967 000         |
+
+**Analyse** :
+
+Les prédictions étaient largement fausses. La sonde linéaire SMI-TED est le pire modèle à toutes les fractions, avec une MSE quasi-plate autour de 967k–1019k. Cela confirme que le problème n'est pas la quantité de données mais la nature non-linéaire de la relation Tc vers les plongements, qu'une couche linéaire ne peut pas capturer.
+
+Le Transformer est le modèle qui bénéficie le plus des données, passant de 921k (10%) à 437k (100%), une amélioration de plus de 50%. Le LSTM montre une amélioration monotone mais plus modeste (937k vers 561k). Le MLP a un comportement atypique avec une anomalie à 50% (MSE monte à 3.2M) avant de redescendre à 473k à 100%, probablement due à la composition du sous-échantillon à 50%.
+
+La leçon principale est que le transfer learning avec sonde linéaire, malgré des plongements riches (72.2% de variance en PCA), ne fonctionne pas pour cette tâche. Un head non-linéaire ou du fine-tuning serait nécessaire.
 
 ---
 
